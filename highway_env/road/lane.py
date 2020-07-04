@@ -1,15 +1,15 @@
 from abc import ABCMeta, abstractmethod
 from typing import Tuple, List
-
 import numpy as np
 
 from highway_env import utils
+from highway_env.types import Vector
 
 
 class AbstractLane(object):
-    """
-        A lane on the road, described by its central curve.
-    """
+
+    """A lane on the road, described by its central curve."""
+
     metaclass__ = ABCMeta
     DEFAULT_WIDTH: float = 4
     VEHICLE_LENGTH: float = 5
@@ -19,7 +19,7 @@ class AbstractLane(object):
     @abstractmethod
     def position(self, longitudinal: float, lateral: float) -> np.ndarray:
         """
-            Convert local lane coordinates to a world position.
+        Convert local lane coordinates to a world position.
 
         :param longitudinal: longitudinal lane coordinate [m]
         :param lateral: lateral lane coordinate [m]
@@ -30,7 +30,7 @@ class AbstractLane(object):
     @abstractmethod
     def local_coordinates(self, position: np.ndarray) -> Tuple[float, float]:
         """
-            Convert a world position to local lane coordinates.
+        Convert a world position to local lane coordinates.
 
         :param position: a world position [m]
         :return: the (longitudinal, lateral) lane coordinates [m]
@@ -40,7 +40,7 @@ class AbstractLane(object):
     @abstractmethod
     def heading_at(self, longitudinal: float) -> float:
         """
-            Get the lane heading at a given longitudinal lane coordinate.
+        Get the lane heading at a given longitudinal lane coordinate.
 
         :param longitudinal: longitudinal lane coordinate [m]
         :return: the lane heading [rad]
@@ -50,7 +50,7 @@ class AbstractLane(object):
     @abstractmethod
     def width_at(self, longitudinal: float) -> float:
         """
-            Get the lane width at a given longitudinal lane coordinate.
+        Get the lane width at a given longitudinal lane coordinate.
 
         :param longitudinal: longitudinal lane coordinate [m]
         :return: the lane width [m]
@@ -60,7 +60,7 @@ class AbstractLane(object):
     def on_lane(self, position: np.ndarray, longitudinal: float = None, lateral: float = None, margin: float = 0) \
             -> bool:
         """
-            Whether a given world position is on the lane.
+        Whether a given world position is on the lane.
 
         :param position: a world position [m]
         :param longitudinal: (optional) the corresponding longitudinal lane coordinate, if known [m]
@@ -76,7 +76,7 @@ class AbstractLane(object):
 
     def is_reachable_from(self, position: np.ndarray) -> bool:
         """
-            Whether the lane is reachable from a given world position
+        Whether the lane is reachable from a given world position
 
         :param position: the world position [m]
         :return: is the lane reachable?
@@ -94,17 +94,15 @@ class AbstractLane(object):
         return longitudinal > self.length - self.VEHICLE_LENGTH / 2
 
     def distance(self, position):
-        """
-            Compute the L1 distance [m] from a position to the lane
-        """
+        """Compute the L1 distance [m] from a position to the lane."""
         s, r = self.local_coordinates(position)
         return abs(r) + max(s - self.length, 0) + max(0 - s, 0)
 
 
 class LineType:
-    """
-        A lane side line type.
-    """
+
+    """A lane side line type."""
+
     NONE = 0
     STRIPED = 1
     CONTINUOUS = 2
@@ -112,19 +110,19 @@ class LineType:
 
 
 class StraightLane(AbstractLane):
-    """
-        A lane going in straight line.
-    """
+
+    """A lane going in straight line."""
+
     def __init__(self,
-                 start: np.ndarray,
-                 end: np.ndarray,
+                 start: Vector,
+                 end: Vector,
                  width: float = AbstractLane.DEFAULT_WIDTH,
-                 line_types: List[LineType] = None,
+                 line_types: Tuple[LineType, LineType] = None,
                  forbidden: bool = False,
                  speed_limit: float = 20,
                  priority: int = 0) -> None:
         """
-            New straight lane.
+        New straight lane.
 
         :param start: the lane starting position [m]
         :param end: the lane ending position [m]
@@ -162,13 +160,12 @@ class StraightLane(AbstractLane):
 
 
 class SineLane(StraightLane):
-    """
-        A sinusoidal lane
-    """
+
+    """A sinusoidal lane."""
 
     def __init__(self,
-                 start: np.ndarray,
-                 end: np.ndarray,
+                 start: Vector,
+                 end: Vector,
                  amplitude: float,
                  pulsation: float,
                  phase: float,
@@ -178,7 +175,7 @@ class SineLane(StraightLane):
                  speed_limit: float = 20,
                  priority: int = 0) -> None:
         """
-            New sinusoidal lane.
+        New sinusoidal lane.
 
         :param start: the lane starting position [m]
         :param end: the lane ending position [m]
@@ -205,11 +202,11 @@ class SineLane(StraightLane):
 
 
 class CircularLane(AbstractLane):
-    """
-        A lane going in circle arc.
-    """
+
+    """A lane going in circle arc."""
+
     def __init__(self,
-                 center: Tuple[float],
+                 center: Vector,
                  radius: float,
                  start_phase: float,
                  end_phase: float,

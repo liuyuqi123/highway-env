@@ -1,11 +1,17 @@
 import itertools
+from typing import List, Tuple, TYPE_CHECKING
+
 import numpy as np
 import pygame
 
+from highway_env.types import Vector
 from highway_env.vehicle.dynamics import BicycleVehicle
-from highway_env.vehicle.kinematics import Vehicle, Obstacle
+from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.controller import ControlledVehicle, MDPVehicle
 from highway_env.vehicle.behavior import IDMVehicle, LinearVehicle
+
+if TYPE_CHECKING:
+    from highway_env.road.graphics import WorldSurface
 
 
 class VehicleGraphics(object):
@@ -19,23 +25,25 @@ class VehicleGraphics(object):
     EGO_COLOR = GREEN
 
     @classmethod
-    def display(cls, vehicle, surface, transparent=False, offscreen=False):
+    def display(cls, vehicle: Vehicle, surface: "WorldSurface", transparent: bool = False, offscreen: bool = False,
+                label: bool = False) -> None:
         """
-            Display a vehicle on a pygame surface.
+        Display a vehicle on a pygame surface.
 
-            The vehicle is represented as a colored rotated rectangle.
+        The vehicle is represented as a colored rotated rectangle.
 
         :param vehicle: the vehicle to be drawn
         :param surface: the surface to draw the vehicle on
         :param transparent: whether the vehicle should be drawn slightly transparent
         :param offscreen: whether the rendering should be done offscreen or not
+        :param label: whether a text label should be rendered
         """
         v = vehicle
         tire_length, tire_width = 1, 0.3
 
         # Vehicle rectangle
         length = v.LENGTH + 2 * tire_length
-        vehicle_surface = pygame.Surface((surface.pix(length), surface.pix(length)), pygame.SRCALPHA)  # per-pixel alpha
+        vehicle_surface = pygame.Surface((surface.pix(length), surface.pix(length)), flags=pygame.SRCALPHA)  # per-pixel alpha
         rect = (surface.pix(tire_length), surface.pix(length / 2 - v.WIDTH / 2), surface.pix(v.LENGTH), surface.pix(v.WIDTH))
         pygame.draw.rect(vehicle_surface, cls.get_color(v, transparent), rect, 0)
         pygame.draw.rect(vehicle_surface, cls.BLACK, rect, 1)
@@ -51,18 +59,28 @@ class VehicleGraphics(object):
                 tire_surface = pygame.Surface((surface.pix(tire_length), surface.pix(tire_length)), pygame.SRCALPHA)
                 rect = (0, surface.pix(tire_length/2-tire_width/2), surface.pix(tire_length), surface.pix(tire_width))
                 pygame.draw.rect(tire_surface, cls.BLACK, rect, 0)
-                cls.blitRotate(vehicle_surface, tire_surface, tire_position, np.rad2deg(-tire_angle))
+                cls.blit_rotate(vehicle_surface, tire_surface, tire_position, np.rad2deg(-tire_angle))
 
         # Centered rotation
         h = v.heading if abs(v.heading) > 2 * np.pi / 180 else 0
-        position = (surface.pos2pix(v.position[0], v.position[1]))
-        if not offscreen:  # convert_alpha throws errors in offscreen mode TODO() Explain why
+        position = [*surface.pos2pix(v.position[0], v.position[1])]
+        if not offscreen:
+            # convert_alpha throws errors in offscreen mode
+            # see https://stackoverflow.com/a/19057853
             vehicle_surface = pygame.Surface.convert_alpha(vehicle_surface)
-        cls.blitRotate(surface, vehicle_surface, position, np.rad2deg(-h))
+        cls.blit_rotate(surface, vehicle_surface, position, np.rad2deg(-h))
+
+        # Label
+        if label:
+            font = pygame.font.Font(None, 15)
+            text = "#{}".format(id(v) % 1000)
+            text = font.render(text, 1, (10, 10, 10), (255, 255, 255))
+            surface.blit(text, position)
 
     @staticmethod
-    def blitRotate(surf, image, pos, angle, origin_pos=None, show_rect=False):
-        """Many thanks to https://stackoverflow.com/a/54714144 """
+    def blit_rotate(surf: pygame.SurfaceType, image: pygame.SurfaceType, pos: Vector, angle: float,
+                    origin_pos: Vector = None, show_rect: bool = False) -> None:
+        """Many thanks to https://stackoverflow.com/a/54714144."""
         # calculate the axis aligned bounding box of the rotated image
         w, h = image.get_size()
         box = [pygame.math.Vector2(p) for p in [(0, 0), (w, 0), (w, -h), (0, -h)]]
@@ -88,9 +106,9 @@ class VehicleGraphics(object):
             pygame.draw.rect(surf, (255, 0, 0), (*origin, *rotated_image.get_size()), 2)
 
     @classmethod
-    def display_trajectory(cls, states, surface, offscreen=False):
+    def display_trajectory(cls, states: List[Vehicle], surface: "WorldSurface", offscreen: bool = False) -> None:
         """
-            Display the whole trajectory of a vehicle on a pygame surface.
+        Display the whole trajectory of a vehicle on a pygame surface.
 
         :param states: the list of vehicle states within the trajectory to be displayed
         :param surface: the surface to draw the vehicle future states on
@@ -100,9 +118,10 @@ class VehicleGraphics(object):
             cls.display(vehicle, surface, transparent=True, offscreen=offscreen)
 
     @classmethod
-    def display_history(cls, vehicle, surface, frequency=3, duration=2, simulation=15, offscreen=False):
+    def display_history(cls, vehicle: Vehicle, surface: "WorldSurface", frequency: float = 3, duration: float = 2,
+                        simulation: int = 15, offscreen: bool = False) -> None:
         """
-            Display the whole trajectory of a vehicle on a pygame surface.
+        Display the whole trajectory of a vehicle on a pygame surface.
 
         :param vehicle: the vehicle states within the trajectory to be displayed
         :param surface: the surface to draw the vehicle future states on
@@ -118,11 +137,11 @@ class VehicleGraphics(object):
             cls.display(v, surface, transparent=True, offscreen=offscreen)
 
     @classmethod
-    def get_color(cls, vehicle, transparent=False):
+    def get_color(cls, vehicle: Vehicle, transparent: bool = False) -> Tuple[int]:
         color = cls.DEFAULT_COLOR
         if getattr(vehicle, "color", None):
             color = vehicle.color
-        elif vehicle.crashed or vehicle.crashed_with_obstacle:
+        elif vehicle.crashed:
             color = cls.RED
         elif isinstance(vehicle, LinearVehicle):
             color = cls.YELLOW
@@ -130,69 +149,7 @@ class VehicleGraphics(object):
             color = cls.BLUE
         elif isinstance(vehicle, MDPVehicle):
             color = cls.EGO_COLOR
-        elif isinstance(vehicle, Obstacle):
-            color = cls.GREEN
         if transparent:
             color = (color[0], color[1], color[2], 30)
         return color
 
-    @classmethod
-    def handle_event(cls, vehicle, event):
-        """
-            Handle a pygame event depending on the vehicle type
-
-        :param vehicle: the vehicle receiving the event
-        :param event: the pygame event
-        """
-        if isinstance(vehicle, ControlledVehicle):
-            cls.control_event(vehicle, event)
-        elif isinstance(vehicle, Vehicle):
-            cls.dynamics_event(vehicle, event)
-
-    @classmethod
-    def control_event(cls, vehicle, event):
-        """
-            Map the pygame keyboard events to control decisions
-
-        :param vehicle: the vehicle receiving the event
-        :param event: the pygame event
-        """
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RIGHT:
-                vehicle.act("FASTER")
-            if event.key == pygame.K_LEFT:
-                vehicle.act("SLOWER")
-            if event.key == pygame.K_DOWN:
-                vehicle.act("LANE_RIGHT")
-            if event.key == pygame.K_UP:
-                vehicle.act("LANE_LEFT")
-
-    @classmethod
-    def dynamics_event(cls, vehicle, event):
-        """
-            Map the pygame keyboard events to dynamics actuation
-
-        :param vehicle: the vehicle receiving the event
-        :param event: the pygame event
-        """
-        action = vehicle.action.copy()
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RIGHT:
-                action['steering'] = 45 * np.pi / 180
-            if event.key == pygame.K_LEFT:
-                action['steering'] = -45 * np.pi / 180
-            if event.key == pygame.K_DOWN:
-                action['acceleration'] = -6
-            if event.key == pygame.K_UP:
-                action['acceleration'] = 5
-        elif event.type == pygame.KEYUP:
-            if event.key == pygame.K_RIGHT:
-                action['steering'] = 0
-            if event.key == pygame.K_LEFT:
-                action['steering'] = 0
-            if event.key == pygame.K_DOWN:
-                action['acceleration'] = 0
-            if event.key == pygame.K_UP:
-                action['acceleration'] = 0
-        if action != vehicle.action:
-            vehicle.act(action)

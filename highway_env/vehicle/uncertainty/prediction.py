@@ -1,36 +1,46 @@
 import copy
-
+from typing import List, Tuple, Callable, Union, TYPE_CHECKING
 import numpy as np
 
 from highway_env import utils
 from highway_env.interval import polytope, vector_interval_section, integrator_interval, \
     interval_negative_part, intervals_diff, intervals_product, LPV, interval_absolute_to_local, \
     interval_local_to_absolute
+from highway_env.road.road import Route, LaneIndex, Road
+from highway_env.types import Vector
 from highway_env.vehicle.behavior import LinearVehicle
 from highway_env.vehicle.controller import MDPVehicle
+from highway_env.vehicle.kinematics import Vehicle
+
+if TYPE_CHECKING:
+    from highway_env.road.objects import RoadObject
+
+Polytope = Tuple[np.ndarray, List[np.ndarray]]
 
 
 class IntervalVehicle(LinearVehicle):
-    """
-        Estimator for the interval-membership of a LinearVehicle under parameter uncertainty.
 
-        The model trajectory is stored in a model_vehicle, and the lower and upper bounds of the states are stored
-        in a min_vehicle and max_vehicle. Note that these vehicles do not follow a proper Vehicle dynamics, and
-        are only used for storage of the bounds.
     """
+    Estimator for the interval-membership of a LinearVehicle under parameter uncertainty.
+
+    The model trajectory is stored in a model_vehicle, and the lower and upper bounds of the states are stored
+    in a min_vehicle and max_vehicle. Note that these vehicles do not follow a proper Vehicle dynamics, and
+    are only used for storage of the bounds.
+    """
+
     def __init__(self,
-                 road,
-                 position,
-                 heading=0,
-                 velocity=0,
-                 target_lane_index=None,
-                 target_velocity=None,
-                 route=None,
-                 enable_lane_change=True,
-                 timer=None,
-                 theta_a_i=None,
-                 theta_b_i=None,
-                 data=None):
+                 road: Road,
+                 position: Vector,
+                 heading: float = 0,
+                 speed: float = 0,
+                 target_lane_index: LaneIndex = None,
+                 target_speed: float = None,
+                 route: Route = None,
+                 enable_lane_change: bool = True,
+                 timer: float = None,
+                 theta_a_i: List[List[float]] = None,
+                 theta_b_i: List[List[float]] = None,
+                 data: dict = None) -> None:
         """
         :param theta_a_i: The interval of possible acceleration parameters
         :param theta_b_i: The interval of possible steering parameters
@@ -38,9 +48,9 @@ class IntervalVehicle(LinearVehicle):
         super().__init__(road,
                          position,
                          heading,
-                         velocity,
+                         speed,
                          target_lane_index,
-                         target_velocity,
+                         target_speed,
                          route,
                          enable_lane_change,
                          timer)
@@ -54,13 +64,13 @@ class IntervalVehicle(LinearVehicle):
         self.previous_target_lane_index = self.target_lane_index
 
     @classmethod
-    def create_from(cls, vehicle):
+    def create_from(cls, vehicle: LinearVehicle) -> "IntervalVehicle":
         v = cls(vehicle.road,
                 vehicle.position,
                 heading=vehicle.heading,
-                velocity=vehicle.velocity,
+                speed=vehicle.speed,
                 target_lane_index=getattr(vehicle, 'target_lane_index', None),
-                target_velocity=getattr(vehicle, 'target_velocity', None),
+                target_speed=getattr(vehicle, 'target_speed', None),
                 route=getattr(vehicle, 'route', None),
                 timer=getattr(vehicle, 'timer', None),
                 theta_a_i=getattr(vehicle, 'theta_a_i', None),
@@ -68,24 +78,27 @@ class IntervalVehicle(LinearVehicle):
                 data=getattr(vehicle, "data", None))
         return v
 
-    def step(self, dt):
+    def step(self, dt: float, mode: str = "partial") -> None:
         self.store_trajectories()
         if self.crashed:
             self.interval = VehicleInterval(self)
         else:
-            # self.observer_step(dt)
-            self.partial_observer_step(dt)
-            # self.predictor_step(dt)
+            if mode == "partial":
+                # self.observer_step(dt)
+                self.partial_observer_step(dt)
+            elif mode == "predictor":
+                self.predictor_step(dt)
         super().step(dt)
 
-    def observer_step(self, dt):
+    def observer_step(self, dt: float) -> None:
         """
-            Step the interval observer dynamics
+        Step the interval observer dynamics
+
         :param dt: timestep [s]
         """
         # Input state intervals
         position_i = self.interval.position
-        v_i = self.interval.velocity
+        v_i = self.interval.speed
         psi_i = self.interval.heading
 
         # Features interval
@@ -96,7 +109,7 @@ class IntervalVehicle(LinearVehicle):
         phi_a_i[:, 0] = [0, 0]
         if front_interval:
             phi_a_i[:, 1] = interval_negative_part(
-                intervals_diff(front_interval.velocity, v_i))
+                intervals_diff(front_interval.speed, v_i))
             # Lane distance interval
             lane_psi = self.lane.heading_at(self.lane.local_coordinates(self.position)[0])
             lane_direction = [np.cos(lane_psi), np.sin(lane_psi)]
@@ -111,7 +124,7 @@ class IntervalVehicle(LinearVehicle):
         lanes = self.get_followed_lanes()
         for lane_index in lanes:
             lane = self.road.network.get_lane(lane_index)
-            longitudinal_pursuit = lane.local_coordinates(self.position)[0] + self.velocity * self.PURSUIT_TAU
+            longitudinal_pursuit = lane.local_coordinates(self.position)[0] + self.speed * self.PURSUIT_TAU
             lane_psi = lane.heading_at(longitudinal_pursuit)
             _, lateral_i = interval_absolute_to_local(position_i, lane)
             lateral_i = -np.flip(lateral_i)
@@ -130,12 +143,12 @@ class IntervalVehicle(LinearVehicle):
         a_i = intervals_product(self.theta_a_i, phi_a_i)
         b_i = intervals_product(self.theta_b_i, phi_b_i)
 
-        # Velocities interval
+        # Speeds interval
         keep_stability = False
         if keep_stability:
-            dv_i = integrator_interval(v_i - self.target_velocity, self.theta_a_i[:, 0])
+            dv_i = integrator_interval(v_i - self.target_speed, self.theta_a_i[:, 0])
         else:
-            dv_i = intervals_product(self.theta_a_i[:, 0], self.target_velocity - np.flip(v_i, 0))
+            dv_i = intervals_product(self.theta_a_i[:, 0], self.target_speed - np.flip(v_i, 0))
         dv_i += a_i
         dv_i = np.clip(dv_i, -self.ACC_MAX, self.ACC_MAX)
         keep_stability = True
@@ -155,7 +168,7 @@ class IntervalVehicle(LinearVehicle):
         dy_i = intervals_product(v_i, sin_i)
 
         # Interval dynamics integration
-        self.interval.velocity += dv_i * dt
+        self.interval.speed += dv_i * dt
         self.interval.heading += d_psi_i * dt
         self.interval.position[:, 0] += dx_i * dt
         self.interval.position[:, 1] += dy_i * dt
@@ -164,10 +177,12 @@ class IntervalVehicle(LinearVehicle):
         noise = 1
         self.interval.position[:, 0] += noise * dt * np.array([-1, 1])
         self.interval.position[:, 1] += noise * dt * np.array([-1, 1])
+        self.interval.heading += noise * dt * np.array([-1, 1])
 
-    def predictor_step(self, dt):
+    def predictor_step(self, dt: float) -> None:
         """
-            Step the interval predictor dynamics
+        Step the interval predictor dynamics
+
         :param dt: timestep [s]
         """
         # Create longitudinal and lateral LPVs
@@ -207,17 +222,15 @@ class IntervalVehicle(LinearVehicle):
         target_lane = self.road.network.get_lane(self.target_lane_index)
         position_i = interval_local_to_absolute(x_i_long[:, 0], x_i_lat[:, 0], target_lane)
         self.interval.position = position_i
-        self.interval.velocity = x_i_long[:, 2]
+        self.interval.speed = x_i_long[:, 2]
         self.interval.heading = x_i_lat[:, 1]
 
-    def predictor_init(self):
-        """
-            Initialize the LPV models used for interval prediction
-        """
+    def predictor_init(self) -> None:
+        """Initialize the LPV models used for interval prediction."""
         position_i = self.interval.position
         target_lane = self.road.network.get_lane(self.target_lane_index)
         longi_i, lat_i = interval_absolute_to_local(position_i, target_lane)
-        v_i = self.interval.velocity
+        v_i = self.interval.speed
         psi_i = self.interval.heading - self.lane.heading_at(longi_i.mean())
 
         # Longitudinal predictor
@@ -226,22 +239,23 @@ class IntervalVehicle(LinearVehicle):
 
             # LPV specification
             if front_interval:
-                f_longi_i, f_lat_i = interval_absolute_to_local(front_interval.position, target_lane)
+                f_longi_i, _ = interval_absolute_to_local(front_interval.position, target_lane)
                 f_pos = f_longi_i[0]
-                f_vel = front_interval.velocity[0]
+                f_vel = front_interval.speed[0]
             else:
                 f_pos, f_vel = 0, 0
             x0 = [longi_i[0], f_pos, v_i[0], f_vel]
-            center = [-self.DISTANCE_WANTED - self.target_velocity * self.TIME_WANTED,
+            center = [-self.DISTANCE_WANTED - self.target_speed * self.TIME_WANTED,
                       0,
-                      self.target_velocity,
-                      self.target_velocity]
+                      self.target_speed,
+                      self.target_speed]
             noise = 1
-            b = np.array([1, 0, 0, 0])[:, np.newaxis]
-            d_i = np.array([[-1], [1]]) * noise
-            c = [self.target_velocity, self.target_velocity, 0, 0]
+            b = np.eye(4)
+            d = np.array([[1], [0], [0], [0]])
+            omega_i = np.array([[-1], [1]]) * noise
+            u = [[self.target_speed], [self.target_speed], [0], [0]]
             a0, da = self.longitudinal_matrix_polytope()
-            self.longitudinal_lpv = LPV(x0, a0, da, b, d_i, c, center)
+            self.longitudinal_lpv = LPV(x0, a0, da, b, d, omega_i, u, center=center)
 
             # Lateral predictor
             if not self.lateral_lpv:
@@ -250,24 +264,25 @@ class IntervalVehicle(LinearVehicle):
                 center = [0, 0]
                 noise = 0.5
                 b = np.identity(2)
-                d_i = np.array([[-1, 0], [1, 0]]) * noise
-                c = [0, 0]
+                d = np.array([[1], [0]])
+                omega_i = np.array([[-1], [1]]) * noise
+                u = [[0], [0]]
                 a0, da = self.lateral_matrix_polytope()
-                self.lateral_lpv = LPV(x0, a0, da, b, d_i, c, center)
+                self.lateral_lpv = LPV(x0, a0, da, b, d, omega_i, u, center=center)
 
-    def longitudinal_matrix_polytope(self):
+    def longitudinal_matrix_polytope(self) -> Polytope:
         return IntervalVehicle.parameter_box_to_polytope(self.theta_a_i, self.longitudinal_structure)
 
-    def lateral_matrix_polytope(self):
+    def lateral_matrix_polytope(self) -> Polytope:
         return IntervalVehicle.parameter_box_to_polytope(self.theta_b_i, self.lateral_structure)
 
     @staticmethod
-    def parameter_box_to_polytope(parameter_box, structure):
+    def parameter_box_to_polytope(parameter_box: np.ndarray, structure: Callable) -> Polytope:
         a, phi = structure()
         a_theta = lambda params: a + np.tensordot(phi, params, axes=[0, 0])
         return polytope(a_theta, parameter_box)
 
-    def get_front_interval(self):
+    def get_front_interval(self) -> "VehicleInterval":
         # TODO: For now, we assume the front vehicle follows the models' front vehicle
         front_vehicle, _ = self.road.neighbour_vehicles(self)
         if front_vehicle:
@@ -282,9 +297,10 @@ class IntervalVehicle(LinearVehicle):
             front_interval = None
         return front_interval
 
-    def get_followed_lanes(self, lane_change_model="model", squeeze=True):
+    def get_followed_lanes(self, lane_change_model: str = "model", squeeze: bool = True) -> List[LaneIndex]:
         """
-            Get the list of lanes that could be followed by this vehicle.
+        Get the list of lanes that could be followed by this vehicle.
+
         :param lane_change_model: - model: assume that the vehicle will follow the lane of its model behaviour.
                                   - all: assume that any lane change decision is possible at any timestep
                                   - right: assume that a right lane change decision is possible at any timestep
@@ -306,13 +322,14 @@ class IntervalVehicle(LinearVehicle):
                 lanes += [self.target_lane_index]  # Right lane is also current lane
         return lanes
 
-    def partial_observer_step(self, dt, alpha=0):
+    def partial_observer_step(self, dt: float, alpha: float = 0) -> None:
         """
-            Step the boundary parts of the current state interval
+        Step the boundary parts of the current state interval
 
-            1. Split x_i(t) into two upper and lower intervals x_i_-(t) and x_i_+(t)
-            2. Propagate their observer dynamics x_i_-(t+dt) and x_i_+(t+dt)
-            3. Merge the resulting intervals together to x_i(t+dt).
+        1. Split x_i(t) into two upper and lower intervals x_i_-(t) and x_i_+(t)
+        2. Propagate their observer dynamics x_i_-(t+dt) and x_i_+(t+dt)
+        3. Merge the resulting intervals together to x_i(t+dt).
+
         :param dt: timestep [s]
         :param alpha: ratio of the full interval that defines the boundaries
         """
@@ -321,12 +338,12 @@ class IntervalVehicle(LinearVehicle):
         v_minus = IntervalVehicle.create_from(self)
         v_minus.interval = copy.deepcopy(self.interval)
         v_minus.interval.position[1, :] = (1 - alpha) * o.position[0, :] + alpha * o.position[1, :]
-        v_minus.interval.velocity[1] = (1 - alpha) * o.velocity[0] + alpha * o.velocity[1]
+        v_minus.interval.speed[1] = (1 - alpha) * o.speed[0] + alpha * o.speed[1]
         v_minus.interval.heading[1] = (1 - alpha) * o.heading[0] + alpha * o.heading[1]
         v_plus = IntervalVehicle.create_from(self)
         v_plus.interval = copy.deepcopy(self.interval)
         v_plus.interval.position[0, :] = alpha * o.position[0, :] + (1 - alpha) * o.position[1, :]
-        v_plus.interval.velocity[0] = alpha * o.velocity[0] + (1 - alpha) * o.velocity[1]
+        v_plus.interval.speed[0] = alpha * o.speed[0] + (1 - alpha) * o.speed[1]
         v_plus.interval.heading[0] = alpha * o.heading[0] + (1 - alpha) * o.heading[1]
         # 2. Propagate their observer dynamics x_i_-(t+dt) and x_i_+(t+dt)
         v_minus.road = copy.copy(v_minus.road)
@@ -337,25 +354,27 @@ class IntervalVehicle(LinearVehicle):
         v_plus.observer_step(dt)
         # 3. Merge the resulting intervals together to x_i(t+dt).
         self.interval.position = np.array([v_minus.interval.position[0], v_plus.interval.position[1]])
-        self.interval.velocity = np.array([v_minus.interval.velocity[0], v_plus.interval.velocity[1]])
-        self.interval.heading = np.array([v_minus.interval.heading[0], v_plus.interval.heading[1]])
+        self.interval.speed = np.array([v_minus.interval.speed[0], v_plus.interval.speed[1]])
+        self.interval.heading = np.array([min(v_minus.interval.heading[0], v_plus.interval.heading[0]),
+                                          max(v_minus.interval.heading[1], v_plus.interval.heading[1])])
 
-    def store_trajectories(self):
-        """
-            Store the current model, min and max states to a trajectory list
-        """
+    def store_trajectories(self) -> None:
+        """Store the current model, min and max states to a trajectory list."""
         self.trajectory.append(LinearVehicle.create_from(self))
         self.interval_trajectory.append(copy.deepcopy(self.interval))
 
-    def check_collision(self, other):
+    def check_collision(self, other: Union['Vehicle', 'RoadObject']) -> None:
         """
-            For robust planning, we assume that MDPVehicles collide with the uncertainty set of an IntervalVehicle,
-            which corresponds to worst-case outcome.
+        Worst-case collision check.
+
+        For robust planning, we assume that MDPVehicles collide with the uncertainty set of an IntervalVehicle,
+        which corresponds to worst-case outcome.
 
         :param other: the other vehicle
         """
         if not isinstance(other, MDPVehicle):
-            return super().check_collision(other)
+            super().check_collision(other)
+            return
 
         if not self.COLLISIONS_ENABLED or self.crashed or other is self:
             return
@@ -373,12 +392,12 @@ class IntervalVehicle(LinearVehicle):
         # Accurate rectangular check
         if utils.rotated_rectangles_intersect((projection, self.LENGTH, self.WIDTH, self.heading),
                                               (other.position, 0.9*other.LENGTH, 0.9*other.WIDTH, other.heading)):
-            self.velocity = other.velocity = min(self.velocity, other.velocity)
+            self.speed = other.speed = min(self.speed, other.speed)
             self.crashed = other.crashed = True
 
 
 class VehicleInterval(object):
-    def __init__(self, vehicle):
+    def __init__(self, vehicle: Vehicle) -> None:
         self.position = np.array([vehicle.position, vehicle.position], dtype=float)
-        self.velocity = np.array([vehicle.velocity, vehicle.velocity], dtype=float)
+        self.speed = np.array([vehicle.speed, vehicle.speed], dtype=float)
         self.heading = np.array([vehicle.heading, vehicle.heading], dtype=float)

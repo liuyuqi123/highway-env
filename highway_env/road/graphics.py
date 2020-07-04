@@ -1,19 +1,24 @@
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 import pygame
 
 from highway_env.road.lane import LineType, AbstractLane
 from highway_env.road.road import Road
+from highway_env.types import Vector
 from highway_env.vehicle.graphics import VehicleGraphics
+from highway_env.road.objects import Obstacle, Landmark
+
+if TYPE_CHECKING:
+    from highway_env.road.objects import RoadObject
 
 PositionType = Union[Tuple[float, float], np.ndarray]
 
 
 class WorldSurface(pygame.Surface):
-    """
-        A pygame Surface implementing a local coordinate system so that we can move and zoom in the displayed area.
-    """
+
+    """A pygame Surface implementing a local coordinate system so that we can move and zoom in the displayed area."""
+
     BLACK = (0, 0, 0)
     GREY = (100, 100, 100)
     GREEN = (50, 200, 0)
@@ -32,7 +37,7 @@ class WorldSurface(pygame.Surface):
 
     def pix(self, length: float) -> int:
         """
-            Convert a distance [m] to pixels [px].
+        Convert a distance [m] to pixels [px].
 
         :param length: the input distance [m]
         :return: the corresponding size [px]
@@ -41,7 +46,7 @@ class WorldSurface(pygame.Surface):
 
     def pos2pix(self, x: float, y: float) -> Tuple[int, int]:
         """
-            Convert two world coordinates [m] into a position in the surface [px]
+        Convert two world coordinates [m] into a position in the surface [px]
 
         :param x: x world coordinate [m]
         :param y: y world coordinate [m]
@@ -59,7 +64,8 @@ class WorldSurface(pygame.Surface):
 
     def move_display_window_to(self, position: PositionType) -> None:
         """
-            Set the origin of the displayed area to center on a given world position.
+        Set the origin of the displayed area to center on a given world position.
+
         :param position: a world position [m]
         """
         self.origin = position - np.array(
@@ -68,7 +74,7 @@ class WorldSurface(pygame.Surface):
 
     def handle_event(self, event: pygame.event.EventType) -> None:
         """
-            Handle pygame events for moving and zooming in the displayed area.
+        Handle pygame events for moving and zooming in the displayed area.
 
         :param event: a pygame event
         """
@@ -84,9 +90,9 @@ class WorldSurface(pygame.Surface):
 
 
 class LaneGraphics(object):
-    """
-        A visualization of a lane.
-    """
+
+    """A visualization of a lane."""
+
     STRIPE_SPACING: float = 5
     """ Offset between stripes [m]"""
 
@@ -99,7 +105,7 @@ class LaneGraphics(object):
     @classmethod
     def display(cls, lane: AbstractLane, surface: WorldSurface) -> None:
         """
-            Display a lane on a surface.
+        Display a lane on a surface.
 
         :param lane: the lane to be displayed
         :param surface: the pygame surface
@@ -119,7 +125,7 @@ class LaneGraphics(object):
     def striped_line(cls, lane: AbstractLane, surface: WorldSurface, stripes_count: int, longitudinal: float,
                      side: int) -> None:
         """
-            Draw a striped line on one side of a lane, on a surface.
+        Draw a striped line on one side of a lane, on a surface.
 
         :param lane: the lane
         :param surface: the pygame surface
@@ -136,7 +142,7 @@ class LaneGraphics(object):
     def continuous_curve(cls, lane: AbstractLane, surface: WorldSurface, stripes_count: int,
                          longitudinal: float, side: int) -> None:
         """
-            Draw a striped line on one side of a lane, on a surface.
+        Draw a striped line on one side of a lane, on a surface.
 
         :param lane: the lane
         :param surface: the pygame surface
@@ -153,7 +159,7 @@ class LaneGraphics(object):
     def continuous_line(cls, lane: AbstractLane, surface: WorldSurface, stripes_count: int, longitudinal: float,
                         side: int) -> None:
         """
-            Draw a continuous line on one side of a lane, on a surface.
+        Draw a continuous line on one side of a lane, on a surface.
 
         :param lane: the lane
         :param surface: the pygame surface
@@ -170,7 +176,7 @@ class LaneGraphics(object):
     def draw_stripes(cls, lane: AbstractLane, surface: WorldSurface,
                      starts: List[float], ends: List[float], lats: List[float]) -> None:
         """
-            Draw a set of stripes along a lane.
+        Draw a set of stripes along a lane.
 
         :param lane: the lane
         :param surface: the surface to draw on
@@ -180,7 +186,7 @@ class LaneGraphics(object):
         """
         starts = np.clip(starts, 0, lane.length)
         ends = np.clip(ends, 0, lane.length)
-        for k in range(len(starts)):
+        for k, _ in enumerate(starts):
             if abs(starts[k] - ends[k]) > 0.5 * cls.STRIPE_LENGTH:
                 pygame.draw.line(surface, surface.WHITE,
                                  (surface.vec2pix(lane.position(starts[k], lats[k]))),
@@ -205,13 +211,13 @@ class LaneGraphics(object):
 
 
 class RoadGraphics(object):
-    """
-        A visualization of a road lanes and vehicles.
-    """
+
+    """A visualization of a road lanes and vehicles."""
+
     @staticmethod
     def display(road: Road, surface: WorldSurface) -> None:
         """
-            Display the road lanes on a surface.
+        Display the road lanes on a surface.
 
         :param road: the road to be displayed
         :param surface: the pygame surface
@@ -226,7 +232,7 @@ class RoadGraphics(object):
     def display_traffic(road: Road, surface: WorldSurface, simulation_frequency: int = 15, offscreen: bool = False) \
             -> None:
         """
-            Display the road vehicles on a surface.
+        Display the road vehicles on a surface.
 
         :param road: the road to be displayed
         :param surface: the pygame surface
@@ -240,13 +246,101 @@ class RoadGraphics(object):
             VehicleGraphics.display(v, surface, offscreen=offscreen)
 
     @staticmethod
-    def display_obstacles(road: Road, surface: WorldSurface, offscreen: bool = False) -> None:
+    def display_road_objects(road: Road, surface: WorldSurface, offscreen: bool = False) -> None:
         """
-            Display the obstacles on a surface.
+        Display the road objects on a surface.
 
         :param road: the road to be displayed
         :param surface: the pygame surface
         :param offscreen: whether the rendering should be done offscreen or not
         """
-        for o in road.obstacles:
-            VehicleGraphics.display(o, surface, offscreen=offscreen)
+        for o in road.objects:
+            RoadObjectGraphics.display(o, surface, offscreen=offscreen)
+
+
+class RoadObjectGraphics:
+
+    """A visualization of objects on the road."""
+
+    YELLOW = (200, 200, 0)
+    BLUE = (100, 200, 255)
+    RED = (255, 100, 100)
+    GREEN = (50, 200, 0)
+    BLACK = (60, 60, 60)
+    DEFAULT_COLOR = YELLOW
+
+    @classmethod
+    def display(cls, object_: 'RoadObject', surface: WorldSurface, transparent: bool = False,
+                offscreen: bool = False):
+        """
+        Display a road objects on a pygame surface.
+
+        The objects is represented as a colored rotated rectangle
+
+        :param object_: the vehicle to be drawn
+        :param surface: the surface to draw the object on
+        :param transparent: whether the object should be drawn slightly transparent
+        :param offscreen: whether the rendering should be done offscreen or not
+        """
+        o = object_
+        s = pygame.Surface((surface.pix(o.LENGTH), surface.pix(o.LENGTH)), pygame.SRCALPHA)  # per-pixel alpha
+        rect = (0, surface.pix(o.WIDTH) / 2 - surface.pix(o.WIDTH) / 2, surface.pix(o.LENGTH), surface.pix(o.WIDTH))
+        pygame.draw.rect(s, cls.get_color(o, transparent), rect, 0)
+        pygame.draw.rect(s, cls.BLACK, rect, 1)
+        if not offscreen:  # convert_alpha throws errors in offscreen mode TODO() Explain why
+            s = pygame.Surface.convert_alpha(s)
+        h = o.heading if abs(o.heading) > 2 * np.pi / 180 else 0
+        # Centered rotation
+        position = (surface.pos2pix(o.position[0], o.position[1]))
+        cls.blit_rotate(surface, s, position, np.rad2deg(-h))
+
+    @staticmethod
+    def blit_rotate(surf: pygame.SurfaceType, image: pygame.SurfaceType, pos: Vector, angle: float,
+                    origin_pos: Vector = None, show_rect: bool = False) -> None:
+        """Many thanks to https://stackoverflow.com/a/54714144."""
+        # calculate the axis aligned bounding box of the rotated image
+        w, h = image.get_size()
+        box = [pygame.math.Vector2(p) for p in [(0, 0), (w, 0), (w, -h), (0, -h)]]
+        box_rotate = [p.rotate(angle) for p in box]
+        min_box = (min(box_rotate, key=lambda p: p[0])[0], min(box_rotate, key=lambda p: p[1])[1])
+        max_box = (max(box_rotate, key=lambda p: p[0])[0], max(box_rotate, key=lambda p: p[1])[1])
+
+        # calculate the translation of the pivot
+        if origin_pos is None:
+            origin_pos = w / 2, h / 2
+        pivot = pygame.math.Vector2(origin_pos[0], -origin_pos[1])
+        pivot_rotate = pivot.rotate(angle)
+        pivot_move = pivot_rotate - pivot
+
+        # calculate the upper left origin of the rotated image
+        origin = (pos[0] - origin_pos[0] + min_box[0] - pivot_move[0],
+                  pos[1] - origin_pos[1] - max_box[1] + pivot_move[1])
+        # get a rotated image
+        rotated_image = pygame.transform.rotate(image, angle)
+        # rotate and blit the image
+        surf.blit(rotated_image, origin)
+        # draw rectangle around the image
+        if show_rect:
+            pygame.draw.rect(surf, (255, 0, 0), (*origin, *rotated_image.get_size()), 2)
+
+    @classmethod
+    def get_color(cls, object_: 'RoadObject', transparent: bool = False):
+        color = cls.DEFAULT_COLOR
+
+        if isinstance(object_, Obstacle):
+            if object_.hit:
+                # indicates failure
+                color = cls.RED
+            else:
+                color = cls.YELLOW
+        elif isinstance(object_, Landmark):
+            if object_.hit:
+                # indicates success
+                color = cls.GREEN
+            else:
+                color = cls.BLUE
+
+        if transparent:
+            color = (color[0], color[1], color[2], 30)
+
+        return color

@@ -1,9 +1,10 @@
 # highway-env
-![build](https://github.com/eleurent/highway-env/workflows/build/badge.svg)
-![docs](https://github.com/eleurent/highway-env/workflows/docs/badge.svg)
-![GitHub contributors](https://img.shields.io/github/contributors/eleurent/highway-env)
+[![build](https://github.com/eleurent/highway-env/workflows/build/badge.svg)](https://github.com/eleurent/highway-env/actions?query=workflow%3Abuild)
+[![Documentation Status](https://readthedocs.org/projects/highway-env/badge/?version=latest)](https://highway-env.readthedocs.io/en/latest/?badge=latest)
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/63847d9328f64fce9c137b03fcafcc27)](https://app.codacy.com/manual/eleurent/highway-env?utm_source=github.com&utm_medium=referral&utm_content=eleurent/highway-env&utm_campaign=Badge_Grade_Dashboard)
 [![Coverage](https://codecov.io/gh/eleurent/highway-env/branch/master/graph/badge.svg)](https://codecov.io/gh/eleurent/highway-env)
-
+[![GitHub contributors](https://img.shields.io/github/contributors/eleurent/highway-env)](https://github.com/eleurent/highway-env/graphs/contributors)
+[![Environments](https://img.shields.io/github/search/eleurent/highway-env/import%20filename:*_env%20path:highway_env/envs?label=environments)](#the-environments)
 
 A collection of environments for *autonomous driving* and tactical decision-making tasks
 
@@ -29,14 +30,18 @@ env = gym.make("highway-v0")
 done = False
 while not done:
     action = ... # Your agent code here
-    obs, reward, done, _ = env.step(action)
+    obs, reward, done, info = env.step(action)
     env.render()
 ```
+
+## Documentation
+
+Read the [documentation online](https://highway-env.readthedocs.io/).
 
 ## Citing
 
 If you use the project in your work, please consider citing it with:
-```
+```bibtex
 @misc{highway-env,
   author = {Leurent, Edouard},
   title = {An Environment for Autonomous Driving Decision-Making},
@@ -48,14 +53,15 @@ If you use the project in your work, please consider citing it with:
 ```
 
 List of publications & submissions using `highway-env` (please open a pull request to add missing entries):
-* [Approximate Robust Control of Uncertain Dynamical Systems](https://arxiv.org/abs/1903.00220) (Dec 2018)
-* [Interval Prediction for Continuous-Time Systems with Parametric Uncertainties](https://arxiv.org/abs/1904.04727) (Apr 2019)
-* [Practical Open-Loop Optimistic Planning](https://arxiv.org/abs/1904.04700) (Apr 2019)
-* [α^α-Rank: Practically Scaling α-Rank through Stochastic Optimisation](https://arxiv.org/abs/1909.11628) (Sep 2019)
-* [Social Attention for Autonomous Decision-Making in Dense Traffic](https://arxiv.org/abs/1911.12250) (Nov 2019)
-* [Budgeted Reinforcement Learning in Continuous State Space](http://papers.nips.cc/paper/9128-budgeted-reinforcement-learning-in-continuous-state-space/) (Dec 2019)
-* [Multi-View Reinforcement Learning](http://papers.nips.cc/paper/8422-multi-view-reinforcement-learning) (Dec 2019)
-* [Reinforcement learning for Dialogue Systems optimization with user adaptation](https://tel.archives-ouvertes.fr/tel-02422691/) (Dec 2019)
+*   [Approximate Robust Control of Uncertain Dynamical Systems](https://arxiv.org/abs/1903.00220) (Dec 2018)
+*   [Interval Prediction for Continuous-Time Systems with Parametric Uncertainties](https://arxiv.org/abs/1904.04727) (Apr 2019)
+*   [Practical Open-Loop Optimistic Planning](https://arxiv.org/abs/1904.04700) (Apr 2019)
+*   [α^α-Rank: Practically Scaling α-Rank through Stochastic Optimisation](https://arxiv.org/abs/1909.11628) (Sep 2019)
+*   [Social Attention for Autonomous Decision-Making in Dense Traffic](https://arxiv.org/abs/1911.12250) (Nov 2019)
+*   [Budgeted Reinforcement Learning in Continuous State Space](http://papers.nips.cc/paper/9128-budgeted-reinforcement-learning-in-continuous-state-space/) (Dec 2019)
+*   [Multi-View Reinforcement Learning](http://papers.nips.cc/paper/8422-multi-view-reinforcement-learning) (Dec 2019)
+*   [Reinforcement learning for Dialogue Systems optimization with user adaptation](https://tel.archives-ouvertes.fr/tel-02422691/) (Dec 2019)
+*   [Distributional Soft Actor Critic for Risk Sensitive Learning](https://arxiv.org/abs/2004.14547) (Apr 2020)
 
 ## The environments
 
@@ -66,13 +72,12 @@ env = gym.make("highway-v0")
 ```
 
 In this task, the ego-vehicle is driving on a multilane highway populated with other vehicles.
-The agent's objective is to reach a high velocity while avoiding collisions with neighbouring vehicles. Driving on the right side of the road is also rewarded.
+The agent's objective is to reach a high speed while avoiding collisions with neighbouring vehicles. Driving on the right side of the road is also rewarded.
 
 <p align="center">
     <img src="../gh-media/docs/media/highway.gif?raw=true"><br/>
     <em>The highway-v0 environment.</em>
 </p>
-
 
 ### Merge
 
@@ -80,7 +85,7 @@ The agent's objective is to reach a high velocity while avoiding collisions with
 env = gym.make("merge-v0")
 ```
 
-In this task, the ego-vehicle starts on a main highway but soon approaches a road junction with incoming vehicles on the access ramp. The agent's objective is now to maintain a high velocity while making room for the vehicles so that they can safely merge in the traffic.
+In this task, the ego-vehicle starts on a main highway but soon approaches a road junction with incoming vehicles on the access ramp. The agent's objective is now to maintain a high speed while making room for the vehicles so that they can safely merge in the traffic.
 
 <p align="center">
     <img src="../gh-media/docs/media/merge-env.gif?raw=true"><br/>
@@ -126,53 +131,13 @@ An intersection negotiation task with dense traffic.
     <em>The intersection-v0 environment.</em>
 </p>
 
-## The framework
-
-New driving environments can easily be made from a set of building blocks.
-
-### Roads
-
-A `Road` is composed of a `RoadNetwork` and a list of `Vehicles`. The `RoadNetwork` describes the topology of the road infrastructure as a graph, where edges represent lanes and nodes represent intersections. For every edge, the corresponding lane geometry is stored in a `Lane` object as a parametrized center line curve, providing a local coordinate system.
-
-### Vehicle kinematics
-
-The vehicles kinematics are represented in the `Vehicle` class by a _Kinematic Bicycle Model_.
-
-![\dot{x}=v\cos(\psi+\beta)](https://render.githubusercontent.com/render/math?math=\dot{x}=v\cos(\psi%2B\beta))
-
-![\dot{y}=v\sin(\psi+\beta)](https://render.githubusercontent.com/render/math?math=\dot{y}=v\sin(\psi%2B\beta))
-
-![\dot{v}=a](https://render.githubusercontent.com/render/math?math=\dot{v}=a)
-
-![\dot{\psi}=\frac{v}{l}\sin\beta](https://render.githubusercontent.com/render/math?math=\dot{\psi}=\frac{v}{l}\sin\beta)
-
-![\beta=\tan^{-1}(1/2\tan\delta)](https://render.githubusercontent.com/render/math?math=\beta=\tan^{-1}(\frac{1}{2}\tan\delta))
-
-Where *(x, y)* is the vehicle position, *v* its forward velocity and *psi* its heading.
-*a* is the acceleration command, *β* is the slip angle at the center of gravity, and δ is the front wheel angle used as a steering command.
-
-### Control
-
-The `ControlledVehicle` class implements a low-level controller on top of a `Vehicle`, allowing to track a given target velocity and follow a target lane.
-
-### Behaviours
-
-The vehicles populating the highway follow simple and realistic behaviours that dictate how they accelerate and steer on the road.
-
-In the `IDMVehicle` class,
-* Longitudinal Model: the acceleration of the vehicle is given by the Intelligent Driver Model (IDM) from [(Treiber et al, 2000)](https://arxiv.org/abs/cond-mat/0002177).
-* Lateral Model: the discrete lane change decisions are given by the MOBIL model from [(Kesting et al, 2007)](https://www.researchgate.net/publication/239439179_General_Lane-Changing_Model_MOBIL_for_Car-Following_Models).
-
-In the `LinearVehicle` class, the longitudinal and lateral behaviours are defined as linear weightings of several features, such as the distance and velocity difference to the leading vehicle.
-
 ## The agents
 
-Agents solving the `highway-env` environments are available in the [RL-Agents](https://github.com/eleurent/rl-agents) repository.
+Agents solving the `highway-env` environments are available in the [rl-agents](https://github.com/eleurent/rl-agents) and [stable-baselines](https://github.com/hill-a/stable-baselines) repositories.
 
 `pip install --user git+https://github.com/eleurent/rl-agents`
 
 ### [Deep Q-Network](https://github.com/eleurent/rl-agents/tree/master/rl_agents/agents/dqn)
-
 
 <p align="center">
     <img src="../gh-media/docs/media/dqn.gif?raw=true"><br/>
@@ -197,10 +162,9 @@ This model-free policy-based reinforcement learning agent is optimized directly 
     <em>The Value Iteration agent solving highway-v0.</em>
 </p>
 
-The Value Iteration is only compatible with finite discrete MDPs, so the environment is first approximated by a [finite-mdp environment](https://github.com/eleurent/finite-mdp) using `env.to_finite_mdp()`. This simplified state representation describes the nearby traffic in terms of predicted Time-To-Collision (TTC) on each lane of the road. The transition model is simplistic and assumes that each vehicle will keep driving at a constant velocity without changing lanes. This model bias can be a source of mistakes.
+The Value Iteration is only compatible with finite discrete MDPs, so the environment is first approximated by a [finite-mdp environment](https://github.com/eleurent/finite-mdp) using `env.to_finite_mdp()`. This simplified state representation describes the nearby traffic in terms of predicted Time-To-Collision (TTC) on each lane of the road. The transition model is simplistic and assumes that each vehicle will keep driving at a constant speed without changing lanes. This model bias can be a source of mistakes.
 
 The agent then performs a Value Iteration to compute the corresponding optimal state-value function.
-
 
 ### [Monte-Carlo Tree Search](https://github.com/eleurent/rl-agents/blob/master/rl_agents/agents/tree_search/mcts.py)
 
